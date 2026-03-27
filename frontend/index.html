@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ft8cb-rx — Live FT8 CB Decoder</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #050a05;
+      --bg2:       #0a120a;
+      --bg3:       #0f1a0f;
+      --green:     #00ff41;
+      --green-dim: #007a1f;
+      --amber:     #ffb300;
+      --red:       #ff3b3b;
+      --gray:      #4a5a4a;
+      --border:    #1a2f1a;
+      --font:      'Courier New', Courier, monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--green);
+      font-family: var(--font);
+      font-size: 13px;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── HEADER ── */
+    header {
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      padding: 10px 18px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .logo {
+      font-size: 22px;
+      font-weight: bold;
+      color: var(--green);
+      letter-spacing: 2px;
+      text-shadow: 0 0 10px var(--green);
+      white-space: nowrap;
+    }
+    .logo span { color: var(--amber); }
+
+    .ws-status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+    }
+    .ws-dot {
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--red);
+      box-shadow: 0 0 6px var(--red);
+      transition: background .3s, box-shadow .3s;
+    }
+    .ws-dot.connected {
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+    }
+    #ws-label { color: var(--gray); }
+
+    .source-selector {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--gray);
+      font-size: 12px;
+    }
+    .source-selector select {
+      background: var(--bg3);
+      color: var(--amber);
+      border: 1px solid var(--border);
+      padding: 3px 8px;
+      font-family: var(--font);
+      font-size: 12px;
+      cursor: not-allowed;
+      opacity: .7;
+    }
+
+    .freq-badge {
+      margin-left: auto;
+      font-size: 18px;
+      color: var(--amber);
+      letter-spacing: 1px;
+      text-shadow: 0 0 8px var(--amber);
+    }
+
+    /* ── MAIN ── */
+    main {
+      display: flex;
+      flex: 1;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* ── WATERFALL ── */
+    .waterfall-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      border-right: 1px solid var(--border);
+      background: var(--bg2);
+      min-width: 0;
+    }
+
+    .panel-title {
+      font-size: 11px;
+      color: var(--green-dim);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 4px;
+    }
+
+    #waterfall {
+      display: block;
+      background: #000;
+      border: 1px solid var(--border);
+      image-rendering: pixelated;
+    }
+
+    .cycle-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 12px;
+      color: var(--gray);
+    }
+    #cycle-progress {
+      flex: 1;
+      height: 6px;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    #cycle-fill {
+      height: 100%;
+      background: var(--green);
+      width: 0%;
+      transition: width .2s linear;
+      box-shadow: 0 0 4px var(--green);
+    }
+    #cycle-label { min-width: 40px; text-align: right; }
+
+    /* ── MESSAGES ── */
+    .messages-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      padding: 12px;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    #messages-list {
+      flex: 1;
+      overflow-y: auto;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      padding: 6px;
+      scrollbar-width: thin;
+      scrollbar-color: var(--green-dim) var(--bg);
+    }
+
+    #messages-list::-webkit-scrollbar { width: 6px; }
+    #messages-list::-webkit-scrollbar-thumb { background: var(--green-dim); }
+    #messages-list::-webkit-scrollbar-track { background: var(--bg); }
+
+    .msg-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 3px 4px;
+      border-bottom: 1px solid #0f1a0f;
+      animation: fadeIn .3s ease;
+      font-size: 12px;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .msg-row:hover { background: #0f1a0f; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-4px); }
+      to   { opacity: 1; transform: none; }
+    }
+
+    .msg-time { color: var(--gray); min-width: 68px; }
+    .msg-snr  { color: var(--amber); min-width: 70px; }
+    .msg-text { flex: 1; color: #c8ffc8; overflow: hidden; text-overflow: ellipsis; }
+    .msg-text .arrow { color: var(--green-dim); }
+
+    .badge {
+      font-size: 10px;
+      font-weight: bold;
+      padding: 1px 5px;
+      border-radius: 3px;
+      letter-spacing: 1px;
+      flex-shrink: 0;
+    }
+    .badge-cb  { background: #003a0f; color: var(--green); border: 1px solid var(--green); }
+    .badge-ham { background: #1a1a00; color: var(--gray);  border: 1px solid var(--gray); }
+
+    /* ── STATS ── */
+    footer {
+      display: flex;
+      gap: 0;
+      background: var(--bg2);
+      border-top: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+
+    .stat-block {
+      flex: 1;
+      padding: 10px 18px;
+      border-right: 1px solid var(--border);
+      min-width: 120px;
+    }
+    .stat-block:last-child { border-right: none; }
+
+    .stat-label {
+      font-size: 10px;
+      color: var(--green-dim);
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .stat-value {
+      font-size: 22px;
+      color: var(--green);
+      text-shadow: 0 0 8px var(--green);
+    }
+    .stat-value.amber { color: var(--amber); text-shadow: 0 0 8px var(--amber); }
+
+    /* scrollbar hide on msg panel title row */
+    .panel-title-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .msg-count-badge {
+      font-size: 11px;
+      color: var(--gray);
+    }
+  </style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">ft8cb<span>-rx</span></div>
+
+  <div class="ws-status">
+    <div class="ws-dot" id="ws-dot"></div>
+    <span id="ws-label">disconnected</span>
+  </div>
+
+  <div class="source-selector">
+    <label for="src-select">SOURCE</label>
+    <select id="src-select" disabled title="Config via .env">
+      <option value="rtlsdr">RTL-SDR local</option>
+      <option value="kiwi">KiwiSDR</option>
+    </select>
+  </div>
+
+  <div class="freq-badge">27.265 MHz</div>
+</header>
+
+<!-- MAIN -->
+<main>
+  <!-- WATERFALL -->
+  <div class="waterfall-panel">
+    <div class="panel-title">Waterfall</div>
+    <canvas id="waterfall" width="600" height="300"></canvas>
+    <div class="cycle-bar">
+      <span style="color:var(--green-dim);font-size:11px">CYCLE</span>
+      <div id="cycle-progress"><div id="cycle-fill"></div></div>
+      <span id="cycle-label">0s / 15s</span>
+    </div>
+  </div>
+
+  <!-- MESSAGES -->
+  <div class="messages-panel">
+    <div class="panel-title-row">
+      <div class="panel-title">Live Decode</div>
+      <div class="msg-count-badge" id="msg-count">0 messages</div>
+    </div>
+    <div id="messages-list"></div>
+  </div>
+</main>
+
+<!-- FOOTER STATS -->
+<footer>
+  <div class="stat-block">
+    <div class="stat-label">Total décodes</div>
+    <div class="stat-value" id="stat-total">0</div>
+  </div>
+  <div class="stat-block">
+    <div class="stat-label">Callsigns CB</div>
+    <div class="stat-value" id="stat-cb">0</div>
+  </div>
+  <div class="stat-block">
+    <div class="stat-label">Callsigns HAM</div>
+    <div class="stat-value amber" id="stat-ham">0</div>
+  </div>
+  <div class="stat-block">
+    <div class="stat-label">Uptime</div>
+    <div class="stat-value amber" id="stat-uptime">00:00:00</div>
+  </div>
+</footer>
+
+<script>
+// ── STATS ──────────────────────────────────────────────────────────────────
+const startTime = Date.now();
+let totalMessages = 0;
+const cbCallsigns  = new Set();
+const hamCallsigns = new Set();
+const MAX_DISPLAYED = 50;
+
+// ── WATERFALL ──────────────────────────────────────────────────────────────
+const canvas = document.getElementById('waterfall');
+const ctx    = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+const LINE_HEIGHT = 2;
+
+// Pre-fill with dark noise
+(function initWaterfall() {
+  const imgData = ctx.createImageData(W, H);
+  for (let i = 0; i < imgData.data.length; i += 4) {
+    const v = Math.random() * 12 | 0;
+    imgData.data[i]   = 0;
+    imgData.data[i+1] = v;
+    imgData.data[i+2] = 0;
+    imgData.data[i+3] = 255;
+  }
+  ctx.putImageData(imgData, 0, 0);
+})();
+
+function scrollWaterfall() {
+  // Scroll down by LINE_HEIGHT
+  const img = ctx.getImageData(0, 0, W, H - LINE_HEIGHT);
+  ctx.putImageData(img, 0, LINE_HEIGHT);
+  // New dark noise line at top
+  const row = ctx.createImageData(W, LINE_HEIGHT);
+  for (let i = 0; i < row.data.length; i += 4) {
+    const v = Math.random() * 15 | 0;
+    row.data[i]   = 0;
+    row.data[i+1] = v;
+    row.data[i+2] = 0;
+    row.data[i+3] = 255;
+  }
+  ctx.putImageData(row, 0, 0);
+}
+
+// Draw a signal spike at audio frequency (0-3000 Hz → 0-W px)
+function drawSignal(freqHz, snr) {
+  const x = Math.round((freqHz / 3000) * W);
+  const intensity = Math.min(255, Math.max(40, 40 + (snr + 30) * 4));
+  const width = 4;
+  ctx.save();
+  ctx.globalAlpha = 0.9;
+  // green-amber gradient based on SNR
+  const r = snr > 0 ? 255 : 0;
+  const g = intensity;
+  const b = 0;
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fillRect(Math.max(0, x - width/2), 0, width, LINE_HEIGHT * 2);
+  ctx.restore();
+}
+
+// Scroll waterfall every 100ms
+setInterval(scrollWaterfall, 100);
+
+// ── CYCLE TIMER ────────────────────────────────────────────────────────────
+const cycleFill  = document.getElementById('cycle-fill');
+const cycleLabel = document.getElementById('cycle-label');
+
+function updateCycle() {
+  const elapsed = (Date.now() / 1000) % 15;
+  const pct = (elapsed / 15) * 100;
+  cycleFill.style.width = pct + '%';
+  cycleLabel.textContent = elapsed.toFixed(1) + 's / 15s';
+}
+setInterval(updateCycle, 100);
+
+// ── UPTIME ─────────────────────────────────────────────────────────────────
+function updateUptime() {
+  const sec = Math.floor((Date.now() - startTime) / 1000);
+  const h = String(Math.floor(sec / 3600)).padStart(2, '0');
+  const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
+  const s = String(sec % 60).padStart(2, '0');
+  document.getElementById('stat-uptime').textContent = `${h}:${m}:${s}`;
+}
+setInterval(updateUptime, 1000);
+
+// ── MESSAGES ───────────────────────────────────────────────────────────────
+const list = document.getElementById('messages-list');
+
+function formatTime(ts) {
+  // ts can be ISO string or "HHMMSS" or epoch
+  try {
+    const d = new Date(ts);
+    if (!isNaN(d)) {
+      return d.toLocaleTimeString('fr-FR', { hour12: false });
+    }
+  } catch(e) {}
+  // fallback: treat as-is
+  return String(ts).slice(0, 8);
+}
+
+function addMessage(msg) {
+  totalMessages++;
+
+  // Track callsigns
+  const isCb = msg.cb === true;
+  const calls = [msg.from, msg.to, msg.call].filter(Boolean);
+  calls.forEach(c => {
+    if (isCb) cbCallsigns.add(c);
+    else hamCallsigns.add(c);
+  });
+
+  // Update stats
+  document.getElementById('stat-total').textContent = totalMessages;
+  document.getElementById('stat-cb').textContent    = cbCallsigns.size;
+  document.getElementById('stat-ham').textContent   = hamCallsigns.size;
+  document.getElementById('msg-count').textContent  = `${Math.min(totalMessages, MAX_DISPLAYED)} messages`;
+
+  // Draw on waterfall
+  const freq = msg.freq || msg.audio_freq || 1500;
+  const snr  = msg.snr  || -10;
+  drawSignal(freq, snr);
+
+  // Build row
+  const row = document.createElement('div');
+  row.className = 'msg-row';
+
+  const time = formatTime(msg.ts || msg.received_at || Date.now());
+  const snrStr = snr >= 0 ? `+${snr}` : `${snr}`;
+
+  // Build message text
+  let msgText = msg.msg || msg.text || '?';
+  // Try to highlight arrow pattern "CALL1 CALL2 REPORT"
+  msgText = msgText.replace(/(\S+)\s+(\S+)/, '$1 <span class="arrow">→</span> $2');
+
+  row.innerHTML = `
+    <span class="msg-time">[${time}]</span>
+    <span class="msg-snr">SNR: ${snrStr} dB</span>
+    <span class="msg-text">${msgText}</span>
+    <span class="badge ${isCb ? 'badge-cb' : 'badge-ham'}">${isCb ? 'CB' : 'HAM'}</span>
+  `;
+
+  list.appendChild(row);
+
+  // Cap at MAX_DISPLAYED
+  while (list.children.length > MAX_DISPLAYED) {
+    list.removeChild(list.firstChild);
+  }
+
+  // Auto-scroll
+  list.scrollTop = list.scrollHeight;
+}
+
+// ── WEBSOCKET ──────────────────────────────────────────────────────────────
+const wsDot   = document.getElementById('ws-dot');
+const wsLabel = document.getElementById('ws-label');
+
+function updateStatus(state) {
+  if (state === 'connected') {
+    wsDot.classList.add('connected');
+    wsLabel.textContent = 'connected';
+  } else {
+    wsDot.classList.remove('connected');
+    wsLabel.textContent = 'disconnected';
+  }
+}
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+
+  ws.onopen = () => {
+    updateStatus('connected');
+    console.log('[ws] connected');
+  };
+
+  ws.onmessage = (event) => {
+    try {
+      const packet = JSON.parse(event.data);
+      if (packet.type === 'history') {
+        packet.messages.forEach(addMessage);
+      } else if (packet.type === 'message') {
+        addMessage(packet.data);
+      }
+    } catch(e) {
+      console.error('[ws] parse error', e);
+    }
+  };
+
+  ws.onclose = () => {
+    updateStatus('disconnected');
+    console.log('[ws] disconnected — retry in 3s');
+    setTimeout(connect, 3000);
+  };
+
+  ws.onerror = (e) => {
+    console.error('[ws] error', e);
+  };
+}
+
+connect();
+</script>
+</body>
+</html>

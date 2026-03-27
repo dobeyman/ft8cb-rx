@@ -1,0 +1,12 @@
+{
+  "name": "ft8cb-backend",
+  "version": "1.0.0",
+  "description": "WebSocket backend for ft8cb-rx",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.16.0"
+  }
+}
