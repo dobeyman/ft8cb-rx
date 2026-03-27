@@ -1,0 +1,55 @@
+services:
+
+  # Décodeur FT8 CB — ft8_lib patché
+  decoder:
+    build: ./decoder
+    container_name: ft8cb-decoder
+    restart: unless-stopped
+    environment:
+      - SOURCE=${SOURCE:-rtlsdr}
+      - RTLSDR_DEVICE=${RTLSDR_DEVICE:-0}
+      - RTLSDR_GAIN=${RTLSDR_GAIN:-40}
+      - RTLSDR_PPM=${RTLSDR_PPM:-0}
+      - KIWISDR_HOST=${KIWISDR_HOST:-}
+      - KIWISDR_PORT=${KIWISDR_PORT:-8073}
+      - KIWISDR_PASSWORD=${KIWISDR_PASSWORD:-}
+      - FREQUENCY=${FREQUENCY:-27265000}
+      - SAMPLE_RATE=${SAMPLE_RATE:-12000}
+    devices:
+      - /dev/bus/usb:/dev/bus/usb   # RTL-SDR USB access
+    volumes:
+      - decoder-socket:/tmp/ft8cb
+    networks:
+      - ft8cb
+
+  # Backend WebSocket Node.js
+  backend:
+    build: ./backend
+    container_name: ft8cb-backend
+    restart: unless-stopped
+    environment:
+      - WEB_PORT=3000
+    volumes:
+      - decoder-socket:/tmp/ft8cb:ro
+    networks:
+      - ft8cb
+
+  # Frontend nginx
+  frontend:
+    image: nginx:alpine
+    container_name: ft8cb-frontend
+    restart: unless-stopped
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "${WEB_PORT:-8080}:80"
+    networks:
+      - ft8cb
+
+volumes:
+  decoder-socket:
+
+networks:
+  ft8cb:
+    driver: bridge

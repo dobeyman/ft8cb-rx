@@ -1,0 +1,6 @@
+.env
+node_modules/
+build/
+*.o
+*.so
+decoder/ft8_lib/build/
